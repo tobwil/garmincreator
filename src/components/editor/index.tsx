@@ -8,7 +8,7 @@ import { WatchCanvas } from './WatchCanvas';
 import { PropertiesPanel } from './PropertiesPanel';
 
 export function Editor() {
-  const { undo, redo, removeElement, selectedId } = useWatchfaceStore();
+  const { undo, redo, removeSelected, selectedIds, copySelected, paste } = useWatchfaceStore();
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -30,14 +30,20 @@ export function Editor() {
       ) {
         e.preventDefault();
         redo();
-      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length > 0) {
         e.preventDefault();
-        removeElement(selectedId);
+        removeSelected();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        e.preventDefault();
+        copySelected();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        e.preventDefault();
+        paste();
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [undo, redo, removeElement, selectedId]);
+  }, [undo, redo, removeSelected, selectedIds, copySelected, paste]);
 
   return (
     <div

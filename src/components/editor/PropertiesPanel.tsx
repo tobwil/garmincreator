@@ -1,21 +1,23 @@
 'use client';
 
 import { useWatchfaceStore } from '@/lib/store';
-import { WIDGET_LABELS } from '@/lib/types';
+import { WIDGET_LABELS, CURATED_FONTS } from '@/lib/types';
 
 export function PropertiesPanel() {
   const {
     elements,
-    selectedId,
+    selectedIds,
     background,
     updateElement,
-    removeElement,
+    removeSelected,
     bringForward,
     sendBackward,
     setBackground,
   } = useWatchfaceStore();
 
-  const el = elements.find((e) => e.id === selectedId);
+  const selectedElements = elements.filter((e) => selectedIds.includes(e.id));
+  const el = selectedElements.length === 1 ? selectedElements[0] : null;
+  const multiSelected = selectedElements.length > 1;
 
   return (
     <aside
@@ -50,18 +52,25 @@ export function PropertiesPanel() {
             {WIDGET_LABELS[el.type]}
           </span>
         )}
+        {multiSelected && (
+          <span style={{ color: '#f59e0b', fontSize: 10 }}>
+            {selectedIds.length} selected
+          </span>
+        )}
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 0' }}>
-        {!el ? (
+        {multiSelected ? (
+          <MultiSelectSection count={selectedIds.length} onRemove={removeSelected} />
+        ) : !el ? (
           /* Background settings when nothing selected */
-          <BackgroundSection bg={background.color} onChange={setBackground} />
+          <BackgroundSection bg={background} onChange={setBackground} />
         ) : (
           /* Element properties */
           <ElementProperties
             el={el}
             onUpdate={(updates) => updateElement(el.id, updates)}
-            onRemove={() => removeElement(el.id)}
+            onRemove={removeSelected}
             onBringForward={() => bringForward(el.id)}
             onSendBackward={() => sendBackward(el.id)}
           />
@@ -71,36 +80,84 @@ export function PropertiesPanel() {
   );
 }
 
+// ─── Multi-select Section ─────────────────────────────────────────────────────
+
+function MultiSelectSection({ count, onRemove }: { count: number; onRemove: () => void }) {
+  return (
+    <>
+      <div style={{ padding: '8px 16px 12px', fontSize: 12, color: '#888', lineHeight: 1.6 }}>
+        {count} widgets selected.
+        <br />
+        Use Shift+click to add/remove from selection.
+      </div>
+      <div style={{ padding: '4px 16px' }}>
+        <button
+          onClick={onRemove}
+          style={{
+            width: '100%',
+            padding: '8px',
+            background: 'transparent',
+            border: '1px solid #3a1a1a',
+            borderRadius: 6,
+            color: '#FF4D4D',
+            cursor: 'pointer',
+            fontSize: 12,
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = '#1a0808';
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+          }}
+        >
+          Delete {count} Widgets
+        </button>
+      </div>
+    </>
+  );
+}
+
 // ─── Background Settings ──────────────────────────────────────────────────────
 
 function BackgroundSection({
   bg,
   onChange,
 }: {
-  bg: string;
-  onChange: (updates: { color: string }) => void;
+  bg: ReturnType<typeof useWatchfaceStore.getState>['background'];
+  onChange: (updates: Partial<typeof bg>) => void;
 }) {
+  const isGradient = bg.type === 'gradient';
+
   return (
     <Section label="Background">
-      <PropRow label="Color">
+      <PropRow label="Type">
+        <ToggleButton
+          options={[
+            { label: 'Solid', value: 'solid' },
+            { label: 'Gradient', value: 'gradient' },
+          ]}
+          value={bg.type}
+          onChange={(v) => {
+            if (v === 'gradient') {
+              onChange({ type: 'gradient', colorEnd: bg.colorEnd ?? '#333333', angle: bg.angle ?? 135 });
+            } else {
+              onChange({ type: 'solid' });
+            }
+          }}
+        />
+      </PropRow>
+
+      <PropRow label={isGradient ? 'Start' : 'Color'}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input
             type="color"
-            value={bg}
+            value={bg.color}
             onChange={(e) => onChange({ color: e.target.value })}
-            style={{
-              width: 36,
-              height: 28,
-              borderRadius: 4,
-              border: '1px solid #333',
-              cursor: 'pointer',
-              padding: 2,
-              background: '#1a1a1a',
-            }}
+            style={colorPickerStyle}
           />
           <input
             type="text"
-            value={bg}
+            value={bg.color}
             onChange={(e) => {
               if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value)) {
                 onChange({ color: e.target.value });
@@ -110,6 +167,47 @@ function BackgroundSection({
           />
         </div>
       </PropRow>
+
+      {isGradient && (
+        <>
+          <PropRow label="End">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="color"
+                value={bg.colorEnd ?? '#333333'}
+                onChange={(e) => onChange({ colorEnd: e.target.value })}
+                style={colorPickerStyle}
+              />
+              <input
+                type="text"
+                value={bg.colorEnd ?? '#333333'}
+                onChange={(e) => {
+                  if (/^#[0-9A-Fa-f]{0,6}$/.test(e.target.value)) {
+                    onChange({ colorEnd: e.target.value });
+                  }
+                }}
+                style={inputStyle}
+              />
+            </div>
+          </PropRow>
+          <PropRow label="Angle">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="range"
+                min={0}
+                max={360}
+                value={bg.angle ?? 135}
+                onChange={(e) => onChange({ angle: Number(e.target.value) })}
+                style={{ flex: 1, accentColor: '#3b82f6' }}
+              />
+              <span style={{ fontSize: 11, color: '#888', width: 32, textAlign: 'right' }}>
+                {bg.angle ?? 135}°
+              </span>
+            </div>
+          </PropRow>
+        </>
+      )}
+
       <div style={{ padding: '8px 16px', fontSize: 11, color: '#444', lineHeight: 1.6 }}>
         Click a widget to edit its properties, or select a template from the toolbar.
       </div>
@@ -154,15 +252,7 @@ function ElementProperties({ el, onUpdate, onRemove, onBringForward, onSendBackw
               type="color"
               value={el.color}
               onChange={(e) => onUpdate({ color: e.target.value })}
-              style={{
-                width: 36,
-                height: 28,
-                borderRadius: 4,
-                border: '1px solid #333',
-                cursor: 'pointer',
-                padding: 2,
-                background: '#1a1a1a',
-              }}
+              style={colorPickerStyle}
             />
             <input
               type="text"
@@ -195,6 +285,24 @@ function ElementProperties({ el, onUpdate, onRemove, onBringForward, onSendBackw
             value={el.fontWeight}
             onChange={(v) => onUpdate({ fontWeight: v as 'normal' | 'bold' })}
           />
+        </PropRow>
+
+        <PropRow label="Font">
+          <select
+            value={el.fontFamily ?? ''}
+            onChange={(e) => onUpdate({ fontFamily: e.target.value || undefined })}
+            style={{
+              ...inputStyle,
+              padding: '4px 6px',
+              cursor: 'pointer',
+            }}
+          >
+            {CURATED_FONTS.map((f) => (
+              <option key={f.value} value={f.value} style={{ fontFamily: f.value || 'inherit' }}>
+                {f.label}
+              </option>
+            ))}
+          </select>
         </PropRow>
       </Section>
 
@@ -397,6 +505,16 @@ const inputStyle: React.CSSProperties = {
   fontSize: 12,
   width: '100%',
   outline: 'none',
+};
+
+const colorPickerStyle: React.CSSProperties = {
+  width: 36,
+  height: 28,
+  borderRadius: 4,
+  border: '1px solid #333',
+  cursor: 'pointer',
+  padding: 2,
+  background: '#1a1a1a',
 };
 
 const smallBtn: React.CSSProperties = {

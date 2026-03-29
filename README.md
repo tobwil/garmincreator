@@ -154,16 +154,16 @@ src/
 
 ## Roadmap
 
-### v1.1 — In Progress
-- [ ] Snap-to-grid toggle
-- [ ] Multi-select with shift-click
-- [ ] Copy/paste widgets
-- [ ] Analog clock widget
+### v1.1 — Done
+- [x] Snap-to-grid toggle (toolbar, 4/8/16/32 px, dot-grid overlay)
+- [x] Multi-select with shift-click (Shift+click to add/remove; Delete removes all)
+- [x] Copy/paste widgets (Ctrl/Cmd+C / Ctrl/Cmd+V)
+- [x] Analog clock widget (SVG hands with tick marks)
 
-### v2.0 — Planned
-- [ ] Custom fonts from a curated library
-- [ ] Mini-charts (step history bar chart, HR curve)
-- [ ] Gradient backgrounds
+### v2.0 — Done
+- [x] Custom fonts from a curated library (Orbitron, Rajdhani, Bebas Neue, Share Tech Mono, Roboto, …)
+- [x] Mini-charts (step history 7-day bar chart, 24h HR curve with area fill)
+- [x] Gradient backgrounds (start/end color + angle slider)
 - [ ] Cloud build: server-side Garmin SDK compile → direct `.prg` download
 - [ ] User accounts with saved designs
 - [ ] Community template gallery

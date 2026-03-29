@@ -13,12 +13,16 @@ export function Toolbar() {
     elements,
     past,
     future,
+    snapToGrid,
+    gridSize,
     setName,
     setDevice,
     undo,
     redo,
     loadTemplate,
     getLayout,
+    toggleSnapToGrid,
+    setGridSize,
   } = useWatchfaceStore();
 
   const [showTemplates, setShowTemplates] = useState(false);
@@ -175,6 +179,40 @@ export function Toolbar() {
       <ToolbarButton onClick={redo} disabled={future.length === 0} title="Redo (Ctrl+Y)">
         ↪
       </ToolbarButton>
+
+      <Divider />
+
+      {/* Snap to grid */}
+      <ToolbarButton
+        onClick={toggleSnapToGrid}
+        active={snapToGrid}
+        title="Snap to grid"
+      >
+        ⊞ Snap
+      </ToolbarButton>
+
+      {snapToGrid && (
+        <select
+          value={gridSize}
+          onChange={(e) => setGridSize(Number(e.target.value))}
+          title="Grid size"
+          style={{
+            background: '#1a1a1a',
+            border: '1px solid #2a2a2a',
+            borderRadius: 4,
+            color: '#aaa',
+            fontSize: 11,
+            padding: '3px 6px',
+            cursor: 'pointer',
+            outline: 'none',
+          }}
+        >
+          <option value={4}>4 px</option>
+          <option value={8}>8 px</option>
+          <option value={16}>16 px</option>
+          <option value={32}>32 px</option>
+        </select>
+      )}
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />

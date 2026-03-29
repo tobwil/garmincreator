@@ -15,15 +15,23 @@ function genId(): string {
   return Math.random().toString(36).substring(2, 11);
 }
 
+function snapValue(v: number, gridSize: number, snap: boolean): number {
+  if (!snap || gridSize <= 1) return v;
+  return Math.round(v / gridSize) * gridSize;
+}
+
 interface WatchfaceStore {
   // ── State ──────────────────────────────────────────────────────────────────
   name: string;
   device: DeviceId;
   background: BackgroundConfig;
   elements: WatchElement[];
-  selectedId: string | null;
+  selectedIds: string[];
   past: WatchElement[][];
   future: WatchElement[][];
+  snapToGrid: boolean;
+  gridSize: number;
+  clipboard: WatchElement[] | null;
 
   // ── Actions ────────────────────────────────────────────────────────────────
   setName: (name: string) => void;
@@ -32,13 +40,19 @@ interface WatchfaceStore {
   addElement: (type: WidgetType, x?: number, y?: number) => void;
   updateElement: (id: string, updates: Partial<WatchElement>) => void;
   removeElement: (id: string) => void;
-  selectElement: (id: string | null) => void;
+  removeSelected: () => void;
+  selectElement: (id: string | null, addToSelection?: boolean) => void;
+  clearSelection: () => void;
   bringForward: (id: string) => void;
   sendBackward: (id: string) => void;
   loadTemplate: (layout: WatchfaceLayout) => void;
   undo: () => void;
   redo: () => void;
   getLayout: () => WatchfaceLayout;
+  toggleSnapToGrid: () => void;
+  setGridSize: (size: number) => void;
+  copySelected: () => void;
+  paste: () => void;
 }
 
 export const useWatchfaceStore = create<WatchfaceStore>((set, get) => ({
@@ -47,9 +61,12 @@ export const useWatchfaceStore = create<WatchfaceStore>((set, get) => ({
   device: 'forerunner970',
   background: { type: 'solid', color: '#000000' },
   elements: [],
-  selectedId: null,
+  selectedIds: [],
   past: [],
   future: [],
+  snapToGrid: false,
+  gridSize: 8,
+  clipboard: null,
 
   // ── Setters ────────────────────────────────────────────────────────────────
   setName: (name) => set({ name }),
@@ -60,21 +77,22 @@ export const useWatchfaceStore = create<WatchfaceStore>((set, get) => ({
   // ── Element Actions ────────────────────────────────────────────────────────
   addElement: (type, x, y) => {
     const defaults = WIDGET_DEFAULTS[type];
+    const { snapToGrid, gridSize } = get();
     const maxZ = get().elements.reduce((m, el) => Math.max(m, el.zIndex), 0);
-    const centerX = x ?? (WATCH_SIZE - defaults.width) / 2;
-    const centerY = y ?? (WATCH_SIZE - defaults.height) / 2;
+    const rawX = x ?? (WATCH_SIZE - defaults.width) / 2;
+    const rawY = y ?? (WATCH_SIZE - defaults.height) / 2;
     const newElement: WatchElement = {
       ...defaults,
       id: genId(),
-      x: Math.round(centerX),
-      y: Math.round(centerY),
+      x: snapValue(Math.max(0, Math.round(rawX)), gridSize, snapToGrid),
+      y: snapValue(Math.max(0, Math.round(rawY)), gridSize, snapToGrid),
       zIndex: maxZ + 1,
     };
     set((state) => ({
       past: [...state.past.slice(-19), state.elements],
       future: [],
       elements: [...state.elements, newElement],
-      selectedId: newElement.id,
+      selectedIds: [newElement.id],
     }));
   },
 
@@ -91,11 +109,41 @@ export const useWatchfaceStore = create<WatchfaceStore>((set, get) => ({
       past: [...state.past.slice(-19), state.elements],
       future: [],
       elements: state.elements.filter((el) => el.id !== id),
-      selectedId: state.selectedId === id ? null : state.selectedId,
+      selectedIds: state.selectedIds.filter((sid) => sid !== id),
     }));
   },
 
-  selectElement: (id) => set({ selectedId: id }),
+  removeSelected: () => {
+    const { selectedIds } = get();
+    if (selectedIds.length === 0) return;
+    set((state) => ({
+      past: [...state.past.slice(-19), state.elements],
+      future: [],
+      elements: state.elements.filter((el) => !selectedIds.includes(el.id)),
+      selectedIds: [],
+    }));
+  },
+
+  selectElement: (id, addToSelection = false) => {
+    if (id === null) {
+      set({ selectedIds: [] });
+      return;
+    }
+    if (addToSelection) {
+      set((state) => {
+        const already = state.selectedIds.includes(id);
+        return {
+          selectedIds: already
+            ? state.selectedIds.filter((sid) => sid !== id)
+            : [...state.selectedIds, id],
+        };
+      });
+    } else {
+      set({ selectedIds: [id] });
+    }
+  },
+
+  clearSelection: () => set({ selectedIds: [] }),
 
   bringForward: (id) => {
     set((state) => {
@@ -131,7 +179,7 @@ export const useWatchfaceStore = create<WatchfaceStore>((set, get) => ({
       device: layout.device,
       background: layout.background,
       elements: layout.elements,
-      selectedId: null,
+      selectedIds: [],
     }));
   },
 
@@ -143,7 +191,7 @@ export const useWatchfaceStore = create<WatchfaceStore>((set, get) => ({
       past: past.slice(0, -1),
       elements: previous,
       future: [elements, ...future],
-      selectedId: null,
+      selectedIds: [],
     });
   },
 
@@ -155,7 +203,7 @@ export const useWatchfaceStore = create<WatchfaceStore>((set, get) => ({
       past: [...past, elements],
       elements: next,
       future: future.slice(1),
-      selectedId: null,
+      selectedIds: [],
     });
   },
 
@@ -168,5 +216,36 @@ export const useWatchfaceStore = create<WatchfaceStore>((set, get) => ({
       background,
       elements,
     };
+  },
+
+  toggleSnapToGrid: () => set((state) => ({ snapToGrid: !state.snapToGrid })),
+
+  setGridSize: (size) => set({ gridSize: size }),
+
+  copySelected: () => {
+    const { selectedIds, elements } = get();
+    if (selectedIds.length === 0) return;
+    const copied = elements.filter((el) => selectedIds.includes(el.id));
+    set({ clipboard: copied });
+  },
+
+  paste: () => {
+    const { clipboard } = get();
+    if (!clipboard || clipboard.length === 0) return;
+    const maxZ = get().elements.reduce((m, el) => Math.max(m, el.zIndex), 0);
+    const newElements = clipboard.map((el, i) => ({
+      ...el,
+      id: genId(),
+      x: Math.min(WATCH_SIZE - el.width, el.x + 16),
+      y: Math.min(WATCH_SIZE - el.height, el.y + 16),
+      zIndex: maxZ + 1 + i,
+    }));
+    set((state) => ({
+      past: [...state.past.slice(-19), state.elements],
+      future: [],
+      elements: [...state.elements, ...newElements],
+      selectedIds: newElements.map((e) => e.id),
+      clipboard: newElements,
+    }));
   },
 }));

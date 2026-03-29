@@ -21,15 +21,33 @@ interface ResizeState {
   startH: number;
 }
 
+function snapVal(v: number, gridSize: number, snap: boolean): number {
+  if (!snap || gridSize <= 1) return v;
+  return Math.round(v / gridSize) * gridSize;
+}
+
 export function WatchCanvas() {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { elements, selectedId, background, selectElement, updateElement, addElement } =
-    useWatchfaceStore();
+  const {
+    elements,
+    selectedIds,
+    background,
+    snapToGrid,
+    gridSize,
+    selectElement,
+    updateElement,
+    addElement,
+  } = useWatchfaceStore();
 
   const [drag, setDrag] = useState<DragState | null>(null);
   const [resize, setResize] = useState<ResizeState | null>(null);
 
   const sortedElements = [...elements].sort((a, b) => a.zIndex - b.zIndex);
+
+  // ── Background CSS ───────────────────────────────────────────────────────
+  const bgStyle = background.type === 'gradient'
+    ? `linear-gradient(${background.angle ?? 135}deg, ${background.color}, ${background.colorEnd ?? '#333333'})`
+    : background.color;
 
   // ── Drop from widget panel ───────────────────────────────────────────────
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -44,11 +62,15 @@ export function WatchCanvas() {
       if (!type || !containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const defaults = WIDGET_DEFAULTS[type];
-      const x = e.clientX - rect.left - defaults.width / 2;
-      const y = e.clientY - rect.top - defaults.height / 2;
-      addElement(type, Math.max(0, Math.round(x)), Math.max(0, Math.round(y)));
+      const rawX = e.clientX - rect.left - defaults.width / 2;
+      const rawY = e.clientY - rect.top - defaults.height / 2;
+      addElement(
+        type,
+        snapVal(Math.max(0, Math.round(rawX)), gridSize, snapToGrid),
+        snapVal(Math.max(0, Math.round(rawY)), gridSize, snapToGrid),
+      );
     },
-    [addElement]
+    [addElement, gridSize, snapToGrid]
   );
 
   // ── Element drag ─────────────────────────────────────────────────────────
@@ -64,7 +86,7 @@ export function WatchCanvas() {
         offsetX: e.clientX - rect.left - el.x,
         offsetY: e.clientY - rect.top - el.y,
       });
-      selectElement(id);
+      selectElement(id, e.shiftKey);
     },
     [elements, selectElement]
   );
@@ -73,14 +95,14 @@ export function WatchCanvas() {
     (e: React.PointerEvent) => {
       if (!drag || !containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left - drag.offsetX;
-      const y = e.clientY - rect.top - drag.offsetY;
+      const rawX = e.clientX - rect.left - drag.offsetX;
+      const rawY = e.clientY - rect.top - drag.offsetY;
       updateElement(drag.id, {
-        x: Math.round(Math.max(0, Math.min(CANVAS_PX, x))),
-        y: Math.round(Math.max(0, Math.min(CANVAS_PX, y))),
+        x: snapVal(Math.round(Math.max(0, Math.min(CANVAS_PX, rawX))), gridSize, snapToGrid),
+        y: snapVal(Math.round(Math.max(0, Math.min(CANVAS_PX, rawY))), gridSize, snapToGrid),
       });
     },
-    [drag, updateElement]
+    [drag, updateElement, gridSize, snapToGrid]
   );
 
   const handleElementPointerUp = useCallback(() => {
@@ -109,11 +131,11 @@ export function WatchCanvas() {
       const dx = e.clientX - resize.startMouseX;
       const dy = e.clientY - resize.startMouseY;
       updateElement(resize.id, {
-        width: Math.max(20, Math.round(resize.startW + dx)),
-        height: Math.max(16, Math.round(resize.startH + dy)),
+        width: snapVal(Math.max(20, Math.round(resize.startW + dx)), gridSize, snapToGrid),
+        height: snapVal(Math.max(16, Math.round(resize.startH + dy)), gridSize, snapToGrid),
       });
     },
-    [resize, updateElement]
+    [resize, updateElement, gridSize, snapToGrid]
   );
 
   const handleResizePointerUp = useCallback(() => {
@@ -139,7 +161,7 @@ export function WatchCanvas() {
             width: CANVAS_PX,
             height: CANVAS_PX,
             borderRadius: '50%',
-            background: background.color,
+            background: bgStyle,
             position: 'relative',
             overflow: 'hidden',
             cursor: drag ? 'grabbing' : 'default',
@@ -149,9 +171,30 @@ export function WatchCanvas() {
           onDrop={handleDrop}
           onClick={() => selectElement(null)}
         >
+          {/* Snap-to-grid overlay */}
+          {snapToGrid && (
+            <svg
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                pointerEvents: 'none',
+                opacity: 0.12,
+              }}
+            >
+              <defs>
+                <pattern id="grid" width={gridSize} height={gridSize} patternUnits="userSpaceOnUse">
+                  <circle cx={gridSize / 2} cy={gridSize / 2} r={0.8} fill="#888" />
+                </pattern>
+              </defs>
+              <rect width="100%" height="100%" fill="url(#grid)" />
+            </svg>
+          )}
+
           {/* Elements */}
           {sortedElements.map((el) => {
-            const isSelected = el.id === selectedId;
+            const isSelected = selectedIds.includes(el.id);
             return (
               <div
                 key={el.id}
@@ -172,6 +215,7 @@ export function WatchCanvas() {
                 onPointerDown={(e) => handleElementPointerDown(e, el.id)}
                 onPointerMove={handleElementPointerMove}
                 onPointerUp={handleElementPointerUp}
+                onClick={(e) => e.stopPropagation()}
               >
                 <WidgetRenderer element={el} />
 
@@ -225,6 +269,9 @@ export function WatchCanvas() {
       {/* Resolution label */}
       <div style={{ fontSize: 11, color: '#444', letterSpacing: '0.1em' }}>
         454 × 454 px · AMOLED
+        {snapToGrid && (
+          <span style={{ marginLeft: 8, color: '#3b82f6' }}>· Grid {gridSize}px</span>
+        )}
       </div>
     </div>
   );
